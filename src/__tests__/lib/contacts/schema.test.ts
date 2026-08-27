@@ -1,9 +1,12 @@
 import {
   CONTACT_FIELDS,
+  MAX_PHOTO_BYTES,
   contactInputSchema,
   formDataToValues,
   zodFieldErrors,
 } from "@/lib/contacts/schema";
+
+const PHOTO = "data:image/png;base64,iVBORw0KGgo=";
 
 function values(overrides: Record<string, string> = {}) {
   return {
@@ -19,6 +22,7 @@ function values(overrides: Record<string, string> = {}) {
     postal_code: "",
     country: "",
     notes: "",
+    photo: "",
     ...overrides,
   };
 }
@@ -66,6 +70,41 @@ describe("contactInputSchema", () => {
       postal_code: "Postal code must be 20 characters or fewer",
     });
   });
+
+  it("accepts a supported base64 photo and turns an empty photo into null", () => {
+    expect(contactInputSchema.parse(values({ photo: PHOTO })).photo).toBe(PHOTO);
+    expect(contactInputSchema.parse(values()).photo).toBeNull();
+  });
+
+  it("rejects unsupported and malformed photo data", () => {
+    const unsupported = contactInputSchema.safeParse(
+      values({ photo: "data:image/svg+xml;base64,PHN2Zz4=" }),
+    );
+    const malformed = contactInputSchema.safeParse(
+      values({ photo: "data:image/png;base64,not base64" }),
+    );
+
+    expect(zodFieldErrors(unsupported.error!).photo).toMatch(/JPEG, PNG, WebP, or GIF/);
+    expect(zodFieldErrors(malformed.error!).photo).toMatch(/valid image/);
+  });
+
+  it("rejects photo content that does not match its declared type", () => {
+    const spoofed = Buffer.from("GIF89anot-a-png").toString("base64");
+    const result = contactInputSchema.safeParse(
+      values({ photo: `data:image/png;base64,${spoofed}` }),
+    );
+
+    expect(zodFieldErrors(result.error!).photo).toMatch(/does not match/);
+  });
+
+  it("rejects a decoded photo larger than two MiB", () => {
+    const encoded = Buffer.alloc(MAX_PHOTO_BYTES + 1).toString("base64");
+    const result = contactInputSchema.safeParse(
+      values({ photo: `data:image/jpeg;base64,${encoded}` }),
+    );
+
+    expect(zodFieldErrors(result.error!).photo).toMatch(/2 MiB or smaller/);
+  });
 });
 
 describe("formDataToValues", () => {
@@ -73,14 +112,16 @@ describe("formDataToValues", () => {
     const formData = new FormData();
     formData.set("first_name", "Grace");
     formData.set("email", "grace@example.com");
+    formData.set("photo", PHOTO);
     formData.set("ignored", "nope");
 
     const extracted = formDataToValues(formData);
 
     expect(extracted.first_name).toBe("Grace");
     expect(extracted.last_name).toBe("");
+    expect(extracted.photo).toBe(PHOTO);
     expect(Object.keys(extracted).sort()).toEqual(
-      CONTACT_FIELDS.map((field) => field.name).sort(),
+      [...CONTACT_FIELDS.map((field) => field.name), "photo"].sort(),
     );
   });
 });
