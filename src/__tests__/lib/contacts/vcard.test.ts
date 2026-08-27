@@ -8,8 +8,26 @@ describe("serializeContactVCard", () => {
   it("serializes a contact as an importable vCard", () => {
     const result = serializeContactVCard(
       makeContact({
-        address: "1 Engine Way",
-        postal_code: "94105",
+        addresses: [
+          {
+            id: 7,
+            type: "Home",
+            address: "1 Engine Way",
+            city: "San Francisco",
+            state: "CA",
+            postal_code: "94105",
+            country: "USA",
+          },
+          {
+            id: 8,
+            type: "Work",
+            address: "2 Navy Way",
+            city: "Arlington",
+            state: "VA",
+            postal_code: null,
+            country: "USA",
+          },
+        ],
         notes: "Met at Qodo",
       }),
     );
@@ -21,6 +39,9 @@ describe("serializeContactVCard", () => {
     expect(result).toContain("TEL;TYPE=CELL:+1-415-555-0101\r\n");
     expect(result).toContain(
       "ADR;TYPE=HOME:;;1 Engine Way;San Francisco;CA;94105;USA\r\n",
+    );
+    expect(result).toContain(
+      "ADR;TYPE=WORK:;;2 Navy Way;Arlington;VA;;USA\r\n",
     );
     expect(result).toContain("NOTE:Met at Qodo\r\n");
     expect(result).toMatch(/END:VCARD\r\n$/);
