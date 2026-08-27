@@ -1,9 +1,11 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ContactForm from "@/components/contacts/ContactForm";
 import { makeContact } from "../mocks/handlers";
 import type { FormState } from "@/lib/contacts/types";
+
+const PHOTO = "data:image/png;base64,iVBORw0KGgo=";
 
 function renderForm(action: jest.Mock, contact?: ReturnType<typeof makeContact>) {
   return render(
@@ -36,6 +38,56 @@ describe("ContactForm", () => {
     expect(screen.getByLabelText(/street address/i)).toHaveValue("");
   });
 
+  it("shows the existing photo in an accessible picker and carries its value", () => {
+    const { container } = renderForm(jest.fn(), makeContact({ photo: PHOTO }));
+
+    expect(screen.getByLabelText("Contact photo")).toHaveAttribute(
+      "accept",
+      "image/jpeg,image/png,image/webp,image/gif",
+    );
+    expect(screen.getByRole("img", { name: "Contact photo preview" })).toHaveAttribute(
+      "src",
+      PHOTO,
+    );
+    expect(container.querySelector('input[name="photo"]')).toHaveValue(PHOTO);
+    expect(screen.getByRole("button", { name: "Remove photo" })).toBeInTheDocument();
+  });
+
+  it("prevents submission while the selected photo is still being read", async () => {
+    const OriginalFileReader = globalThis.FileReader;
+    const readers: DeferredFileReader[] = [];
+    class DeferredFileReader {
+      result: string | ArrayBuffer | null = null;
+      onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      onerror: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      onabort: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      constructor() {
+        readers.push(this);
+      }
+      readAsDataURL() {}
+      abort() {}
+    }
+    globalThis.FileReader = DeferredFileReader as unknown as typeof FileReader;
+
+    try {
+      renderForm(jest.fn());
+      await userEvent.upload(
+        screen.getByLabelText("Contact photo"),
+        new File(["photo"], "portrait.png", { type: "image/png" }),
+      );
+
+      expect(screen.getByRole("button", { name: "Create contact" })).toBeDisabled();
+
+      act(() => {
+        readers[0].result = PHOTO;
+        readers[0].onload?.(new ProgressEvent("load") as ProgressEvent<FileReader>);
+      });
+      expect(screen.getByRole("button", { name: "Create contact" })).toBeEnabled();
+    } finally {
+      globalThis.FileReader = OriginalFileReader;
+    }
+  });
+
   it("submits the entered values to the action", async () => {
     const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
       async () => ({ status: "idle" }),
@@ -52,6 +104,18 @@ describe("ContactForm", () => {
     const formData = action.mock.calls[0][1];
     expect(formData.get("first_name")).toBe("Grace");
     expect(formData.get("email")).toBe("grace@example.com");
+  });
+
+  it("submits an existing photo when an edit does not replace it", async () => {
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action, makeContact({ photo: PHOTO }));
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    expect(action.mock.calls[0][1].get("photo")).toBe(PHOTO);
   });
 
   it("shows the summary and the per-field errors the action returns", async () => {

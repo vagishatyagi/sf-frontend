@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { AlertCircle, Loader2 } from "lucide-react";
 import Field from "@/components/ui/Field";
+import PhotoPicker from "@/components/contacts/PhotoPicker";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { CONTACT_FIELD_GROUPS } from "@/lib/contacts/schema";
 import {
@@ -19,11 +20,17 @@ export type ContactFormAction = (
   formData: FormData,
 ) => Promise<FormState>;
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({
+  label,
+  photoReading,
+}: {
+  label: string;
+  photoReading: boolean;
+}) {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending || photoReading}>
       {pending ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
       ) : null}
@@ -49,6 +56,7 @@ export default function ContactForm({
   cancelHref: string;
 }) {
   const [state, formAction] = useActionState(action, EMPTY_FORM_STATE);
+  const [photoReading, setPhotoReading] = useState(false);
 
   function valueFor(name: keyof ContactInput): string {
     return state.values?.[name] ?? contact?.[name] ?? "";
@@ -69,6 +77,12 @@ export default function ContactForm({
           <span>{state.message}</span>
         </div>
       ) : null}
+
+      <PhotoPicker
+        photo={(state.values?.photo ?? contact?.photo ?? null) || null}
+        error={state.fieldErrors?.photo}
+        onReadingChange={setPhotoReading}
+      />
 
       {CONTACT_FIELD_GROUPS.map((group) => (
         <fieldset key={group.title} className="space-y-4">
@@ -97,7 +111,7 @@ export default function ContactForm({
       ))}
 
       <div className="flex items-center gap-2 border-t border-hairline pt-4">
-        <SubmitButton label={submitLabel} />
+        <SubmitButton label={submitLabel} photoReading={photoReading} />
         <Link href={cancelHref} className={buttonClasses("secondary")}>
           Cancel
         </Link>

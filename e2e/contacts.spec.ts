@@ -107,6 +107,47 @@ test.describe('Contacts', () => {
     await expect(page.getByText('Email is required')).toBeVisible()
   })
 
+  test('preserves a photo through edits and allows removing it', async ({ page }) => {
+    const email = uniqueEmail('photo')
+    const last = `Photo${Date.now().toString().slice(-6)}`
+    const fullName = `Portrait ${last}`
+
+    await page.goto('/contacts/new')
+    await page.getByLabel('First name').fill('Portrait')
+    await page.getByLabel('Last name').fill(last)
+    await page.getByLabel('Email', { exact: false }).first().fill(email)
+    await page.getByLabel('Contact photo').setInputFiles({
+      name: 'portrait.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    })
+    await expect(page.getByRole('img', { name: 'Contact photo preview' })).toBeVisible()
+    await page.getByRole('button', { name: 'Create contact' }).click()
+    await expect(page.locator('header img[alt=""]')).toBeVisible()
+
+    // The same circular avatar is present in the list.
+    await page.goto(`/contacts?q=${last}`)
+    const row = page.getByRole('row').filter({ hasText: fullName })
+    await expect(row.locator('img[alt=""]')).toBeVisible()
+    await row.getByRole('link', { name: fullName, exact: true }).click()
+
+    // A normal edit carries the photo through PUT even when no new file is selected.
+    await page.getByRole('link', { name: 'Edit' }).click()
+    await page.getByLabel('Job title').fill('Photographer')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.locator('header img[alt=""]')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Edit' }).click()
+    await page.getByRole('button', { name: 'Remove photo' }).click()
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.locator('header img[alt=""]')).toHaveCount(0)
+
+    await deleteFromDetailPage(page, fullName)
+  })
+
   test('sorting is a link and survives a reload', async ({ page }) => {
     await page.goto('/contacts')
     await page.getByRole('columnheader', { name: /email/i }).getByRole('link').click()

@@ -9,6 +9,7 @@ import {
   getContact,
   getHealth,
   listContacts,
+  replaceContact,
   toFieldErrors,
 } from "@/lib/contacts/api";
 import type { ContactInput } from "@/lib/contacts/types";
@@ -30,6 +31,7 @@ const INPUT: ContactInput = {
   postal_code: null,
   country: null,
   notes: null,
+  photo: null,
 };
 
 describe("listContacts", () => {
@@ -102,6 +104,23 @@ describe("createContact", () => {
     );
 
     await expect(createContact(INPUT)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("replaceContact", () => {
+  it("carries the current photo in the PUT body", async () => {
+    const photo = "data:image/png;base64,iVBORw0KGgo=";
+    let body: ContactInput | undefined;
+    server.use(
+      http.put(api("/api/v1/contacts/:id"), async ({ request, params }) => {
+        body = (await request.json()) as ContactInput;
+        return HttpResponse.json({ id: Number(params.id), ...body });
+      }),
+    );
+
+    await replaceContact(7, { ...INPUT, photo });
+
+    expect(body?.photo).toBe(photo);
   });
 });
 

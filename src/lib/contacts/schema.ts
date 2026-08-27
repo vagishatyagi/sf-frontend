@@ -1,6 +1,102 @@
 import { z } from "zod";
 import type { ContactInput } from "./types";
 
+export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+export const ACCEPTED_PHOTO_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+
+const PHOTO_DATA_URL = new RegExp(
+  `^data:(${ACCEPTED_PHOTO_TYPES.join("|")});base64,(.*)$`,
+  "s",
+);
+
+function isValidBase64(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length % 4 === 0 &&
+    /^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  );
+}
+
+function decodedBase64Size(value: string): number {
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return (value.length * 3) / 4 - padding;
+}
+
+export function photoMatchesMediaType(
+  photo: string,
+  mediaType: string,
+): boolean {
+  const comma = photo.indexOf(",");
+  if (comma < 0) return false;
+
+  try {
+    const decoded = atob(photo.slice(comma + 1));
+    const byte = (index: number) => decoded.charCodeAt(index);
+
+    switch (mediaType) {
+      case "image/jpeg":
+        return byte(0) === 0xff && byte(1) === 0xd8 && byte(2) === 0xff;
+      case "image/png":
+        return decoded.startsWith("\u0089PNG\r\n\u001a\n");
+      case "image/gif":
+        return decoded.startsWith("GIF87a") || decoded.startsWith("GIF89a");
+      case "image/webp":
+        return decoded.startsWith("RIFF") && decoded.slice(8, 12) === "WEBP";
+      default:
+        return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+const photoSchema = z
+  .string()
+  .superRefine((value, context) => {
+    if (!value) return;
+
+    const match = PHOTO_DATA_URL.exec(value);
+    if (!match) {
+      context.addIssue({
+        code: "custom",
+        message: "Photo must be a JPEG, PNG, WebP, or GIF image",
+      });
+      return;
+    }
+
+    const base64 = match[2];
+    if (!isValidBase64(base64)) {
+      context.addIssue({
+        code: "custom",
+        message: "Photo must contain valid image data",
+      });
+      return;
+    }
+
+    if (decodedBase64Size(base64) > MAX_PHOTO_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message: "Photo must be 2 MiB or smaller",
+      });
+      return;
+    }
+
+    if (!photoMatchesMediaType(value, match[1])) {
+      context.addIssue({
+        code: "custom",
+        message: "Photo content does not match its declared image type",
+      });
+    }
+  })
+  .transform((value) => value || null)
+  .nullable()
+  .default(null);
+
 /**
  * Client/server-shared validation for the contact form.
  *
@@ -52,6 +148,7 @@ export const contactInputSchema = z.object({
     .transform((value) => value || null)
     .nullable()
     .default(null),
+  photo: photoSchema,
 }) satisfies z.ZodType<ContactInput, unknown>;
 
 export type ContactFormValues = z.input<typeof contactInputSchema>;
@@ -218,10 +315,11 @@ export const CONTACT_FIELDS: ContactFieldSpec[] = CONTACT_FIELD_GROUPS.flatMap(
 export function formDataToValues(
   formData: FormData,
 ): Record<keyof ContactInput, string> {
-  return Object.fromEntries(
-    CONTACT_FIELDS.map((field) => [
+  return Object.fromEntries([
+    ...CONTACT_FIELDS.map((field) => [
       field.name,
       String(formData.get(field.name) ?? ""),
     ]),
-  ) as Record<keyof ContactInput, string>;
+    ["photo", String(formData.get("photo") ?? "")],
+  ]) as Record<keyof ContactInput, string>;
 }
