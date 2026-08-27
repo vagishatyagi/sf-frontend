@@ -28,18 +28,20 @@ export function serializeContactVCard(
   lines.push(`EMAIL;TYPE=INTERNET:${escapeValue(contact.email)}`);
   if (contact.phone) lines.push(`TEL;TYPE=CELL:${escapeValue(contact.phone)}`);
 
-  const address = [
-    "",
-    "",
-    contact.address,
-    contact.city,
-    contact.state,
-    contact.postal_code,
-    contact.country,
-  ];
-  if (address.some(Boolean)) {
+  for (const address of contact.addresses) {
+    const parts = [
+      "",
+      "",
+      address.address,
+      address.city,
+      address.state,
+      address.postal_code,
+      address.country,
+    ];
     lines.push(
-      `ADR;TYPE=HOME:${address.map((part) => escapeValue(part ?? "")).join(";")}`,
+      `ADR;TYPE=${address.type.toUpperCase()}:${parts
+        .map((part) => escapeValue(part ?? ""))
+        .join(";")}`,
     );
   }
 
