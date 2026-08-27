@@ -25,11 +25,16 @@ const INPUT: ContactInput = {
   phone: null,
   company: null,
   job_title: null,
-  address: null,
-  city: null,
-  state: null,
-  postal_code: null,
-  country: null,
+  addresses: [
+    {
+      type: "Work",
+      address: "1 Market St",
+      city: "San Francisco",
+      state: "CA",
+      postal_code: "94105",
+      country: "USA",
+    },
+  ],
   notes: null,
   photo: null,
 };
@@ -89,8 +94,18 @@ describe("getContact", () => {
 });
 
 describe("createContact", () => {
-  it("posts the input and returns the stored contact", async () => {
+  it("posts the exact nested input and returns the stored contact", async () => {
+    let body: unknown;
+    server.use(
+      http.post(api("/api/v1/contacts"), async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ id: 99, ...(body as object) }, { status: 201 });
+      }),
+    );
+
     await expect(createContact(INPUT)).resolves.toMatchObject({ id: 99 });
+    expect(body).toEqual(INPUT);
+    expect(body).not.toHaveProperty("address");
   });
 
   it("surfaces a 409 as an ApiError", async () => {
@@ -108,7 +123,7 @@ describe("createContact", () => {
 });
 
 describe("replaceContact", () => {
-  it("carries the current photo in the PUT body", async () => {
+  it("carries the current photo and address inputs without ids in the PUT body", async () => {
     const photo = "data:image/png;base64,iVBORw0KGgo=";
     let body: ContactInput | undefined;
     server.use(
@@ -120,7 +135,8 @@ describe("replaceContact", () => {
 
     await replaceContact(7, { ...INPUT, photo });
 
-    expect(body?.photo).toBe(photo);
+    expect(body).toEqual({ ...INPUT, photo });
+    expect(body?.addresses[0]).not.toHaveProperty("id");
   });
 });
 
@@ -170,6 +186,10 @@ describe("error translation", () => {
         detail: [
           { loc: ["body", "email"], msg: "value is not a valid email address" },
           { loc: ["body", "first_name"], msg: "String should have at least 1 character" },
+          {
+            loc: ["body", "addresses", 1, "address"],
+            msg: "String should have at least 1 character",
+          },
         ],
       }),
     );
@@ -177,6 +197,7 @@ describe("error translation", () => {
     expect(toFieldErrors(error)).toEqual({
       email: "value is not a valid email address",
       first_name: "String should have at least 1 character",
+      "addresses.1.address": "String should have at least 1 character",
     });
   });
 

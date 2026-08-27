@@ -3,6 +3,24 @@
  * Field names stay snake_case so payloads map 1:1 onto the wire format.
  */
 
+export const ADDRESS_TYPES = ["Home", "Work", "Other"] as const;
+export type AddressType = (typeof ADDRESS_TYPES)[number];
+
+/** An address accepted by `ContactCreate` / `ContactReplace`. */
+export interface AddressInput {
+  type: AddressType;
+  address: string;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+}
+
+/** A stored address returned as part of `ContactRead`. */
+export interface AddressRead extends AddressInput {
+  id: number;
+}
+
 /** `ContactRead` — a stored contact, as returned by every contact endpoint. */
 export interface Contact {
   id: number;
@@ -12,11 +30,7 @@ export interface Contact {
   phone: string | null;
   company: string | null;
   job_title: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  postal_code: string | null;
-  country: string | null;
+  addresses: AddressRead[];
   notes: string | null;
   /** Browser-ready base64 image data URL, or null when no photo is set. */
   photo: string | null;
@@ -28,8 +42,24 @@ export interface Contact {
 /** Every editable field, i.e. `ContactCreate` / `ContactReplace`. */
 export type ContactInput = Omit<
   Contact,
-  "id" | "created_at" | "updated_at" | "full_name"
->;
+  "id" | "created_at" | "updated_at" | "full_name" | "addresses"
+> & { addresses: AddressInput[] };
+
+export interface AddressFormValue {
+  type: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+}
+
+export type ContactScalarInputName = Exclude<keyof ContactInput, "addresses">;
+
+/** Raw strings echoed back to the form after client or API validation. */
+export type ContactFormValues = Partial<
+  Record<ContactScalarInputName, string>
+> & { addresses?: AddressFormValue[] };
 
 /** `ContactPage` — one page of contacts plus the totals needed to paginate. */
 export interface ContactPage {
@@ -76,9 +106,9 @@ export type FormState = {
   /** Message shown above the form; used for API-level failures. */
   message?: string;
   /** Per-field messages keyed by input name. */
-  fieldErrors?: Partial<Record<keyof ContactInput, string>>;
+  fieldErrors?: Record<string, string>;
   /** Echo of the submitted values so the form survives a failed round trip. */
-  values?: Partial<Record<keyof ContactInput, string>>;
+  values?: ContactFormValues;
 };
 
 export const EMPTY_FORM_STATE: FormState = { status: "idle" };
