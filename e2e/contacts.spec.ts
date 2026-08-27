@@ -107,7 +107,7 @@ test.describe('Contacts', () => {
     await expect(page.getByText('Email is required')).toBeVisible()
   })
 
-  test('preserves a photo through edits and allows removing it', async ({ page }) => {
+  test('preserves a photo while adding, editing and removing addresses', async ({ page }) => {
     const email = uniqueEmail('photo')
     const last = `Photo${Date.now().toString().slice(-6)}`
     const fullName = `Portrait ${last}`
@@ -116,6 +116,18 @@ test.describe('Contacts', () => {
     await page.getByLabel('First name').fill('Portrait')
     await page.getByLabel('Last name').fill(last)
     await page.getByLabel('Email', { exact: false }).first().fill(email)
+
+    await page.getByRole('button', { name: 'Add address' }).click()
+    await page.getByLabel('Address 1 street address').fill('12 First St')
+    await page.getByLabel('Address 1 city').fill('Oakland')
+    await page.getByLabel('Address 1 state / region').fill('CA')
+    await page.getByLabel('Address 1 postal code').fill('94607')
+    await page.getByLabel('Address 1 country').fill('USA')
+
+    await page.getByRole('button', { name: 'Add address' }).click()
+    await page.getByLabel('Address 2 type').selectOption('Work')
+    await page.getByLabel('Address 2 street address').fill('1 Market St')
+    await page.getByLabel('Address 2 city').fill('San Francisco')
     await page.getByLabel('Contact photo').setInputFiles({
       name: 'portrait.png',
       mimeType: 'image/png',
@@ -127,6 +139,9 @@ test.describe('Contacts', () => {
     await expect(page.getByRole('img', { name: 'Contact photo preview' })).toBeVisible()
     await page.getByRole('button', { name: 'Create contact' }).click()
     await expect(page.locator('header img[alt=""]')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: 'Home' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: 'Work' })).toBeVisible()
+    await expect(page.locator('address')).toHaveCount(2)
 
     // The same circular avatar is present in the list.
     await page.goto(`/contacts?q=${last}`)
@@ -134,11 +149,21 @@ test.describe('Contacts', () => {
     await expect(row.locator('img[alt=""]')).toBeVisible()
     await row.getByRole('link', { name: fullName, exact: true }).click()
 
-    // A normal edit carries the photo through PUT even when no new file is selected.
+    // Address edits and removals still carry the photo through PUT.
     await page.getByRole('link', { name: 'Edit' }).click()
+    await expect(page.getByLabel('Address 1 street address')).toHaveValue('12 First St')
+    await expect(page.getByRole('img', { name: 'Contact photo preview' })).toBeVisible()
     await page.getByLabel('Job title').fill('Photographer')
+    await page.getByLabel('Address 1 city').fill('Berkeley')
+    await page.getByRole('button', { name: 'Remove address 2' }).click()
+    await page.getByRole('button', { name: 'Add address' }).click()
+    await page.getByLabel('Address 2 type').selectOption('Other')
+    await page.getByLabel('Address 2 street address').fill('PO Box 42')
     await page.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.locator('header img[alt=""]')).toBeVisible()
+    await expect(page.getByText('12 First St, Berkeley, CA 94607, USA')).toBeVisible()
+    await expect(page.getByText('PO Box 42')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: 'Work' })).toHaveCount(0)
 
     await page.getByRole('link', { name: 'Edit' }).click()
     await page.getByRole('button', { name: 'Remove photo' }).click()

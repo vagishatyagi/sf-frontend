@@ -4,11 +4,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Pencil } from "lucide-react";
 import ContactAvatar from "@/components/contacts/ContactAvatar";
+import ContactAddresses from "@/components/contacts/ContactAddresses";
 import ContactShareButton from "@/components/contacts/ContactShareButton";
 import DeleteContactButton from "@/components/contacts/DeleteContactButton";
 import { buttonClasses } from "@/components/ui/Button";
 import { getContact } from "@/lib/contacts/api";
-import { addressLine, formatTimestamp, jobLine } from "@/lib/contacts/format";
+import { formatTimestamp, jobLine } from "@/lib/contacts/format";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -44,8 +45,6 @@ export default async function ContactDetailPage({ params }: PageProps) {
   if (!contact) notFound();
 
   const subtitle = jobLine(contact);
-  const address = addressLine(contact);
-
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <Link
@@ -104,13 +103,14 @@ export default async function ContactDetailPage({ params }: PageProps) {
         </Row>
         <Row label="Company">{contact.company}</Row>
         <Row label="Job title">{contact.job_title}</Row>
-        <Row label="Address">{address}</Row>
         <Row label="Notes">
           {contact.notes ? (
             <span className="whitespace-pre-wrap">{contact.notes}</span>
           ) : null}
         </Row>
       </dl>
+
+      <ContactAddresses addresses={contact.addresses} />
 
       <dl className="rounded-lg border border-border bg-card/50 text-[13px]">
         <Row label="ID">

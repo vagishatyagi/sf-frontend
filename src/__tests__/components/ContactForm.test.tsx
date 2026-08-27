@@ -34,8 +34,92 @@ describe("ContactForm", () => {
 
     expect(screen.getByLabelText(/first name/i)).toHaveValue("Ada");
     expect(screen.getByLabelText(/^email/i)).toHaveValue("ada@example.com");
-    // Nulls become empty inputs rather than the string "null".
-    expect(screen.getByLabelText(/street address/i)).toHaveValue("");
+    expect(screen.queryByLabelText(/street address/i)).not.toBeInTheDocument();
+  });
+
+  it("starts with no addresses and can add and remove any number", async () => {
+    renderForm(jest.fn());
+
+    expect(screen.getByText("No addresses added.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Address 1 street address")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add address" }));
+    await userEvent.selectOptions(screen.getByLabelText("Address 1 type"), "Work");
+    await userEvent.type(
+      screen.getByLabelText("Address 1 street address"),
+      "1 Market St",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Add address" }));
+
+    expect(screen.getByLabelText("Address 1 type")).toHaveValue("Work");
+    expect(screen.getByLabelText("Address 2 type")).toHaveValue("Home");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove address 1" }),
+    );
+
+    expect(screen.getByLabelText("Address 1 type")).toHaveValue("Home");
+    expect(screen.queryByLabelText("Address 2 type")).toBeNull();
+  });
+
+  it("prefills stored addresses without exposing their database ids", () => {
+    const { container } = renderForm(
+      jest.fn(),
+      makeContact({
+        addresses: [
+          {
+            id: 17,
+            type: "Other",
+            address: "PO Box 42",
+            city: null,
+            state: null,
+            postal_code: "94607",
+            country: "USA",
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByLabelText("Address 1 type")).toHaveValue("Other");
+    expect(screen.getByLabelText("Address 1 street address")).toHaveValue(
+      "PO Box 42",
+    );
+    expect(screen.getByLabelText("Address 1 city")).toHaveValue("");
+    expect(container.querySelector('input[name="addresses.0.id"]')).toBeNull();
+  });
+
+  it("shows an indexed address error on the matching input", async () => {
+    const action = jest.fn(
+      async (): Promise<FormState> => ({
+        status: "error",
+        message: "Please fix the highlighted fields.",
+        fieldErrors: {
+          "addresses.0.address": "Street address is required",
+        },
+        values: {
+          addresses: [
+            {
+              type: "Home",
+              address: "",
+              city: "",
+              state: "",
+              postal_code: "",
+              country: "",
+            },
+          ],
+        },
+      }),
+    );
+    renderForm(action);
+
+    await userEvent.click(screen.getByRole("button", { name: "Add address" }));
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+
+    expect(await screen.findByText("Street address is required")).toBeVisible();
+    expect(screen.getByLabelText("Address 1 street address")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
   });
 
   it("shows the existing photo in an accessible picker and carries its value", () => {
@@ -106,16 +190,36 @@ describe("ContactForm", () => {
     expect(formData.get("email")).toBe("grace@example.com");
   });
 
-  it("submits an existing photo when an edit does not replace it", async () => {
+  it("submits an existing photo and nested addresses on an edit", async () => {
     const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
       async () => ({ status: "idle" }),
     );
-    renderForm(action, makeContact({ photo: PHOTO }));
+    renderForm(
+      action,
+      makeContact({
+        photo: PHOTO,
+        addresses: [
+          {
+            id: 9,
+            type: "Home",
+            address: "12 First St",
+            city: "Oakland",
+            state: "CA",
+            postal_code: "94607",
+            country: "USA",
+          },
+        ],
+      }),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
     await waitFor(() => expect(action).toHaveBeenCalled());
 
-    expect(action.mock.calls[0][1].get("photo")).toBe(PHOTO);
+    const submitted = action.mock.calls[0][1];
+    expect(submitted.get("photo")).toBe(PHOTO);
+    expect(submitted.get("addresses.0.type")).toBe("Home");
+    expect(submitted.get("addresses.0.address")).toBe("12 First St");
+    expect(submitted.has("addresses.0.id")).toBe(false);
   });
 
   it("shows the summary and the per-field errors the action returns", async () => {
